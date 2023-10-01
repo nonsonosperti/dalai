@@ -12,6 +12,9 @@
   },
   "dependencies": {
     "gsap": "^3.11.5",
-    "three": "^0.153.0"
+    "three": "^0.153.0",
+    "three-bmfont-text": "^2.3.0",
+    "three-msdf-text-utils": "^1.1.6",
+    "vite-plugin-glsl": "^1.1.2"
   }
 }
