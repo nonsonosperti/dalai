@@ -3,21 +3,40 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 
-import { Font, FontLoader } from 'three/examples/jsm/loaders/FontLoader.js'
-import { MSDFTextGeometry, MSDFTextMaterial, uniforms } from 'three-msdf-text-utils'
-// import fontjson from '../static/fonts/manifold/manifold-msdf.json'
-// import font from '../static/fonts/manifold/manifold-msdf.fnt'
-// import fontTexture from '../static/fonts/manifold/manifold.png'
-import fontGradientMap from '../static/fonts/manifold/gradient-map.png'
-import textVertexShader from '/js/shaders/text/vertex.glsl'
-import textFragmentShader from '/js/shaders/text/fragment.glsl'
+import { FontLoader } from 'three/examples/jsm/loaders/FontLoader.js'
+import { MSDFTextGeometry, uniforms } from 'three-msdf-text-utils'
+
+// import vertexParticles from '/js/shaders/text/vertexParticles.glsl'
+// import textFragmentShader from '/js/shaders/text/fragment.glsl'
+// import fragment from '/js/shaders/text/fragment.glsl'
 
 import { gsap } from 'gsap'
 
+let mixer = null
+
+const sizes = {
+    width: window.innerWidth,
+    height: window.innerHeight
+}
+
+const cursor = {
+    x: 0,
+    y: 0
+}
+
+window.addEventListener('mousemove', (event) => {
+
+    cursor.x = event.clientX / sizes.width - 0.5
+    cursor.y = event.clientY / sizes.height - 0.5
+
+    // console.log(cursor.x + " " + cursor.y)
+})
+
 Promise.all([
     loadFontAtlas("../fonts/manifold/manifold.png"),
-    loadFont("../fonts/manifold/manifold-msdf.fnt"),
-]).then(([atlas, font]) => {
+    loadFont("../fonts/manifold/manifold.fnt"),
+    loadFontAtlas("../fonts/manifold/gradient-map.png")
+]).then(([atlas, font, gradientTexture]) => {
     const geometry = new MSDFTextGeometry({
         text: "DALAI",
         font: font.data,
@@ -39,23 +58,191 @@ Promise.all([
         uniforms: {
             // Common
             ...uniforms.common,
-            ...{
-                uGradientMap:{ value: new THREE.TextureLoader(fontGradientMap)}
-            },
             
             // Rendering
             ...uniforms.rendering,
             
             // Strokes
             ...uniforms.strokes,
-            ...{
-                uStrokeColor:{ value: {r: 255, g: 255, b: 255}},
-            }
+            time: { type: 'f', value: 0 },
+            viewport: { type: 'v2', value: new THREE.Vector2(window.innerWidth,window.innerHeight) },
+            uMouse: { type: 'v2', value: new THREE.Vector2(0,0) },
+            gradientMap: { type: 't', value: gradientTexture},
         },
-        vertexShader: textVertexShader,
-        fragmentShader: textFragmentShader,
+        vertexShader: `
+            // Attribute
+            attribute vec2 layoutUv;
+    
+            attribute float lineIndex;
+    
+            attribute float lineLettersTotal;
+            attribute float lineLetterIndex;
+    
+            attribute float lineWordsTotal;
+            attribute float lineWordIndex;
+    
+            attribute float wordIndex;
+    
+            attribute float letterIndex;
+    
+            // Varyings
+            varying vec2 vUv;
+            varying vec2 vLayoutUv;
+            varying vec3 vViewPosition;
+            varying vec3 vNormal;
+    
+            varying float vLineIndex;
+    
+            varying float vLineLettersTotal;
+            varying float vLineLetterIndex;
+    
+            varying float vLineWordsTotal;
+            varying float vLineWordIndex;
+    
+            varying float vWordIndex;
+    
+            varying float vLetterIndex;
+    
+            void main() {
+                // Output
+                vec4 mvPosition = vec4(position, 1.0);
+                mvPosition = modelViewMatrix * mvPosition;
+                gl_Position = projectionMatrix * mvPosition;
+    
+                // Varyings
+                vUv = uv;
+                vLayoutUv = layoutUv;
+                vViewPosition = -mvPosition.xyz;
+                vNormal = normal;
+    
+                vLineIndex = lineIndex;
+    
+                vLineLettersTotal = lineLettersTotal;
+                vLineLetterIndex = lineLetterIndex;
+    
+                vLineWordsTotal = lineWordsTotal;
+                vLineWordIndex = lineWordIndex;
+    
+                vWordIndex = wordIndex;
+    
+                vLetterIndex = letterIndex;
+            }
+        `,
+        fragmentShader: `
+            
+            // Varyings
+            varying vec2 vUv;
+
+            
+    
+            // Uniforms: Common
+            uniform float uOpacity;
+            uniform float uThreshold;
+            uniform float uAlphaTest;
+            uniform vec3 uColor;
+            uniform sampler2D uMap;
+    
+            // Uniforms: Strokes
+            uniform vec3 uStrokeColor;
+            uniform float uStrokeOutsetWidth;
+            uniform float uStrokeInsetWidth;
+
+            uniform vec2 uMouse;
+            uniform vec2 viewport;
+            uniform sampler2D gradientMap;
+            uniform float time;
+    
+            // Utils: Median
+            float median(float r, float g, float b) {
+                return max(min(r, g), min(max(r, g), b));
+            }
+
+            float createCircle() {
+                vec2 viewportUv = gl_FragCoord.xy / viewport;
+                float viewportAspect = viewport.x / viewport.y;
+      
+                vec2 mousePoint = vec2(uMouse.x, 1.0 - uMouse.y);
+                float circleRadius = max(0.0, 100. / viewport.x) ;
+      
+                vec2 shapeUv = viewportUv - mousePoint;
+                shapeUv /= vec2(1.0, viewportAspect);
+                shapeUv += mousePoint;
+      
+                float dist = distance(shapeUv, mousePoint);
+                dist = smoothstep(circleRadius, circleRadius + 0.001, dist);
+                return dist;
+                // return uMouse.y;
+            }
+    
+            void main() {
+
+
+                // Common
+                // Texture sample
+                vec3 s = texture2D(uMap, vUv).rgb;
+    
+                // Signed distance
+                float sigDist = median(s.r, s.g, s.b) - 0.5;
+    
+                float afwidth = 1.4142135623730951 / 2.0;
+    
+                #ifdef IS_SMALL
+                    float alpha = smoothstep(uThreshold - afwidth, uThreshold + afwidth, sigDist);
+                #else
+                    float alpha = clamp(sigDist / fwidth(sigDist) + 0.5, 0.0, 1.0);
+                #endif
+    
+                // Strokes
+                // Outset
+                float sigDistOutset = sigDist + uStrokeOutsetWidth * 0.5;
+    
+                // Inset
+                float sigDistInset = sigDist - uStrokeInsetWidth * 0.5;
+    
+                #ifdef IS_SMALL
+                    float outset = smoothstep(uThreshold - afwidth, uThreshold + afwidth, sigDistOutset);
+                    float inset = 1.0 - smoothstep(uThreshold - afwidth, uThreshold + afwidth, sigDistInset);
+                #else
+                    float outset = clamp(sigDistOutset / fwidth(sigDistOutset) + 0.5, 0.0, 1.0);
+                    float inset = 1.0 - clamp(sigDistInset / fwidth(sigDistInset) + 0.5, 0.0, 1.0);
+                #endif
+    
+                // Border
+                float border = outset * inset;
+    
+                // Alpha Test
+                if (alpha < uAlphaTest) discard;
+    
+                // Output: Common
+                vec4 filledFragColor = vec4(uColor, uOpacity * alpha);
+    
+                // Output: Strokes
+                vec4 strokedFragColor = vec4(uStrokeColor, uOpacity * border);
+    
+                float lineProgress = 0.3;
+                float gr = texture2D(gradientMap, vUv).r;
+                // gradient
+                float grgr = fract(3.*gr + time/5.);
+                float start = smoothstep(0.,0.01,grgr);
+                float end = smoothstep(lineProgress,lineProgress -0.01,grgr);
+                float mask = start*end;
+                mask = max(0.2,mask);
+
+                float fill = clamp(sigDist/fwidth(sigDist) + 0.5, 0.0, 1.0);
+
+                // float finalAlpha = border*mask + fill
+
+                // gl_FragColor = filledFragColor;
+                gl_FragColor = vec4(vec3(grgr), 1.);
+                // gl_FragColor = mix(filledFragColor, strokedFragColor, border);
+            }
+        `,
     });
+
     material.uniforms.uMap.value = atlas;
+    // material.uniforms.uColor.value = new Color('0xfffff');
+            // material.uniforms.uStrokeColor.value = new Color(config.settings.strokeColor);
+
     const mesh = new THREE.Mesh(geometry, material)
     mesh.scale.set(0.01, - 0.01, 0.01)
     mesh.position.set(-0.01 * layout.width / 2, -0.01 * layout.height / 2, 0)
@@ -107,25 +294,6 @@ const loadingManager = new THREE.LoadingManager(
 )
 const gltfLoader = new GLTFLoader(loadingManager)
 
-let mixer = null
-
-const sizes = {
-    width: window.innerWidth,
-    height: window.innerHeight
-}
-
-const cursor = {
-    x: 0,
-    y: 0
-}
-
-window.addEventListener('mousemove', (event) => {
-
-    cursor.x = event.clientX / sizes.width - 0.5
-    cursor.y = event.clientY / sizes.height - 0.5
-
-})
-
 // Canvas
 const canvas = document.querySelector('canvas.webgl')
 
@@ -133,7 +301,7 @@ const canvas = document.querySelector('canvas.webgl')
 const scene = new THREE.Scene()
 
 const backgroundGeometry = new THREE.PlaneGeometry(5, 5, 1, 1)
-const backgroundMaterial = new THREE.MeshBasicMaterial({color: 0xffffff})//0x11361b})
+const backgroundMaterial = new THREE.MeshBasicMaterial({color: 0x000000})
 const backgroundMesh = new THREE.Mesh(backgroundGeometry, backgroundMaterial)
 
 backgroundMesh.position.z = -1
@@ -165,11 +333,11 @@ const overlayMaterial = new THREE.ShaderMaterial({
     `
 })
 const overlay = new THREE.Mesh(overlayGeometry, overlayMaterial)
-scene.add(overlay)
+// scene.add(overlay)
 
 // Camera
 
-const camera = new THREE.PerspectiveCamera(75, sizes.width / sizes.height, 0.1, 20)
+const camera = new THREE.PerspectiveCamera(75, sizes.width / sizes.height, 0.01, 20)
 camera.position.set(0, 0, 0.4)
 
 
@@ -189,7 +357,7 @@ gltfLoader.load(
 
         mesh = gltf.scene.children[0]
         
-        scene.add(mesh)
+        // scene.add(mesh)
 
         
         
@@ -202,7 +370,7 @@ gltfLoader.load(
         mesh.rotation.y = - 0.2
         
         //camera.lookAt(mesh.position)
-        scene.add(camera)
+        //scene.add(camera)
   }
 )
 

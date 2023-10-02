@@ -1,3 +1,8 @@
+uniform sampler2D gradientMap;
+uniform vec2 uMouse;
+uniform vec2 viewport;
+uniform float time;
+
 // Varyings
 varying vec2 vUv;
 
@@ -13,14 +18,33 @@ uniform sampler2D uMap;
 uniform vec3 uStrokeColor;
 uniform float uStrokeOutsetWidth;
 uniform float uStrokeInsetWidth;
-uniform sampler2D uGradientMap;
+
 
 // Utils: Median
 float median(float r, float g, float b) {
     return max(min(r, g), min(max(r, g), b));
 }
 
+float createCircle(){
+    vec2 viewportUv = gl_FragCoord.xy / viewport;
+    float viewportAspect = viewport.x / viewport.y;
+
+    vec2 mousePoint = vec2(uMouse.x + 0.5, 1. - uMouse.y);
+    float circleRadius = max(0.0, 100. / viewport.x);
+
+    vec2 shapeUv = viewportUv - mousePoint;
+    shapeUv /= vec2(1.0, viewportAspect);
+    shapeUv += mousePoint;
+
+    float dist = distance(shapeUv, mousePoint);
+    dist = smoothstep(circleRadius, circleRadius + 0.001, dist);
+    return dist;
+}
+
 void main() {
+
+    float circle = 1. - createCircle();
+
     // Common
     // Texture sample
     vec3 s = texture2D(uMap, vUv).rgb;
@@ -54,18 +78,24 @@ void main() {
     // Border
     float border = outset * inset;
 
+    float lineProgress = 0.3;
+
     // Alpha Test
     if (alpha < uAlphaTest) discard;
 
     // Output: Common
     vec4 filledFragColor = vec4(uColor, uOpacity * alpha);
 
-    vec3 gr = texture2D(uGradientMap, vUv).rgb;
-    float fill = clamp(sigDist / fwidth(sigDist) + 0.5, 0.0, 1.0);
+    float gr = texture2D(gradientMap, vUv).r;
+
+    float start = smoothstep(0., 0.01, gr);
+    float end = smoothstep(lineProgress, lineProgress - 0.01, gr);
+    float mask = start * end;
+    mask = max(0.2, mask);
 
     // Output: Strokes
     vec4 strokedFragColor = vec4(uStrokeColor, 0.5 * border);
 
     //gl_FragColor = mix(filledFragColor, strokedFragColor, border);
-    gl_FragColor = vec4(gr, fill);
+    gl_FragColor = vec4(vec3(circle), 1.);
 }

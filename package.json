@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "gsap": "^3.11.5",
+    "object-assign": "^4.1.1",
     "three": "^0.153.0",
     "three-bmfont-text": "^2.3.0",
     "three-msdf-text-utils": "^1.1.6",
