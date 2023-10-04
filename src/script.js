@@ -12,6 +12,339 @@ import { MSDFTextGeometry, uniforms } from 'three-msdf-text-utils'
 
 import { gsap } from 'gsap'
 
+// export default class Section {
+//     constructor(options){
+        
+//         this.scene = new THREE.Scene()
+
+//         this.container = options.dom
+//         // this.width = this.container.offsetWidth
+//         // this.height = this.container.offsetHeight
+        
+//         this.renderer = new THREE.WebGLRenderer()
+//         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+//         this.renderer.setSize(this.width, this.height)
+//         this.renderer.setClearColor(0x333333, 1);
+
+//         this.container.appendChild(this.renderer.domElement)
+
+//         this.camera = new THREE.PerspectiveCamera(
+//             70,
+//             window.innerWidth / window.innerHeight,
+//             0.001,
+//             1000
+//         )
+//         this.camera.position.set(0, 0, 2)
+
+//         this.controls = new OrbitControls(this.camera, this.renderer.domElement)
+//         this.controls.enableZoom = true
+//         this.controls.enableRotate = true
+        
+//         this.time = 0;
+        
+//         this.mouse = {
+//             x:0,
+//             y:0
+//         }
+
+//         Promise.all([
+//                 this.loadFontAtlas("../fonts/manifold/manifold.png"),
+//                 this.loadFont("../fonts/manifold/manifold.fnt"),
+//                 this.loadFontAtlas("../fonts/manifold/gradient-map.png")
+//             ]).then(([atlas, font, gradientTexture]) => {
+
+//                 this.addText(atlas, font, gradientTexture)
+//                 this.mouseEvents()
+//                 this.resize()
+//                 this.render()
+//                 this.setupResize()
+
+//             })
+
+//     }
+
+//     loadFontAtlas(path) {
+//             const promise = new Promise((resolve, reject) => {
+//                 const loader = new THREE.TextureLoader();
+//                 loader.load(path, resolve);
+//             });
+        
+//             return promise;
+//     }
+        
+//     loadFont(path) {
+//             const promise = new Promise((resolve, reject) => {
+//                 const loader = new FontLoader();
+//                 loader.load(path, resolve);
+//             });
+        
+//             return promise;
+//     }
+
+//     addText(atlas, font, gradientTexture){
+
+//         this.geometry = new MSDFTextGeometry({
+//                     text: "D",
+//                     font: font.data,
+//                     align: 'center'
+//         })
+            
+//         const layout = this.geometry.layout
+//                 //const material = new MSDFTextMaterial();
+                
+//         this.material = new THREE.ShaderMaterial({
+//             side: THREE.DoubleSide,
+//             transparent: true,
+//             defines: {
+//                 IS_SMALL: false,
+//             },
+//             extensions: {
+//                 derivatives: true,
+//             },
+//             uniforms: {
+//                 // Common
+//                 ...uniforms.common,
+                        
+//                 // Rendering
+//                 ...uniforms.rendering,
+                        
+//                 // Strokes
+//                 ...uniforms.strokes,
+//                 time: { type: 'f', value: 0 },
+//                 viewport: { type: 'v2', value: new THREE.Vector2(window.innerWidth,window.innerHeight) },
+//                 uMouse: { type: 'v2', value: new THREE.Vector2(0,0) },
+//                 gradientMap: { type: 't', value: gradientTexture},
+//                 sOpacity: { value: 0.5 }
+//             },
+//             vertexShader: `
+//                         // Attribute
+//                         attribute vec2 layoutUv;
+                
+//                         attribute float lineIndex;
+                
+//                         attribute float lineLettersTotal;
+//                         attribute float lineLetterIndex;
+                
+//                         attribute float lineWordsTotal;
+//                         attribute float lineWordIndex;
+                
+//                         attribute float wordIndex;
+                
+//                         attribute float letterIndex;
+                
+//                         // Varyings
+//                         varying vec2 vUv;
+//                         varying vec2 vLayoutUv;
+//                         varying vec3 vViewPosition;
+//                         varying vec3 vNormal;
+                
+//                         varying float vLineIndex;
+                
+//                         varying float vLineLettersTotal;
+//                         varying float vLineLetterIndex;
+                
+//                         varying float vLineWordsTotal;
+//                         varying float vLineWordIndex;
+                
+//                         varying float vWordIndex;
+                
+//                         varying float vLetterIndex;
+                
+//                         void main() {
+//                             // Output
+//                             vec4 mvPosition = vec4(position, 1.0);
+//                             mvPosition = modelViewMatrix * mvPosition;
+//                             gl_Position = projectionMatrix * mvPosition;
+                
+//                             // Varyings
+//                             vUv = uv;
+//                             vLayoutUv = layoutUv;
+//                             vViewPosition = -mvPosition.xyz;
+//                             vNormal = normal;
+                
+//                             vLineIndex = lineIndex;
+                
+//                             vLineLettersTotal = lineLettersTotal;
+//                             vLineLetterIndex = lineLetterIndex;
+                
+//                             vLineWordsTotal = lineWordsTotal;
+//                             vLineWordIndex = lineWordIndex;
+                
+//                             vWordIndex = wordIndex;
+                
+//                             vLetterIndex = letterIndex;
+//                         }
+//                     `,
+//                     fragmentShader: `
+                        
+//                         // Varyings
+//                         varying vec2 vUv;
+            
+                        
+                
+//                         // Uniforms: Common
+//                         uniform float uOpacity;
+//                         uniform float sOpacity;
+//                         uniform float uThreshold;
+//                         uniform float uAlphaTest;
+//                         uniform vec3 uColor;
+//                         uniform sampler2D uMap;
+                
+//                         // Uniforms: Strokes
+//                         uniform vec3 uStrokeColor;
+//                         uniform float uStrokeOutsetWidth;
+//                         uniform float uStrokeInsetWidth;
+            
+//                         uniform vec2 uMouse;
+//                         uniform vec2 viewport;
+//                         uniform sampler2D gradientMap;
+//                         uniform float time;
+                
+//                         // Utils: Median
+//                         float median(float r, float g, float b) {
+//                             return max(min(r, g), min(max(r, g), b));
+//                         }
+            
+//                         float createCircle() {
+//                             vec2 viewportUv = gl_FragCoord.xy / viewport;
+//                             float viewportAspect = viewport.x / viewport.y;
+                  
+//                             vec2 mousePoint = vec2(uMouse.x, 1.0 - uMouse.y);
+//                             float circleRadius = max(0.0, 100. / viewport.x) ;
+                  
+//                             vec2 shapeUv = viewportUv - mousePoint;
+//                             shapeUv /= vec2(1.0, viewportAspect);
+//                             shapeUv += mousePoint;
+                  
+//                             float dist = distance(shapeUv, mousePoint);
+//                             dist = smoothstep(circleRadius, circleRadius + 0.001, dist);
+//                             return dist;
+//                             // return uMouse.y;
+//                         }
+                
+//                         void main() {
+                            
+//                             float circle = createCircle();
+            
+//                             // Common
+//                             // Texture sample
+//                             vec3 s = texture2D(uMap, vUv).rgb;
+                
+//                             // Signed distance
+//                             float sigDist = median(s.r, s.g, s.b) - 0.5;
+                
+//                             float afwidth = 1.4142135623730951 / 2.0;
+                
+//                             #ifdef IS_SMALL
+//                                 float alpha = smoothstep(uThreshold - afwidth, uThreshold + afwidth, sigDist);
+//                             #else
+//                                 float alpha = clamp(sigDist / fwidth(sigDist) + 0.5, 0.0, 1.0);
+//                             #endif
+                
+//                             // Strokes
+//                             // Outset
+//                             float sigDistOutset = sigDist + uStrokeOutsetWidth * 0.5;
+                
+//                             // Inset
+//                             float sigDistInset = sigDist - uStrokeInsetWidth * 0.5;
+                
+//                             #ifdef IS_SMALL
+//                                 float outset = smoothstep(uThreshold - afwidth, uThreshold + afwidth, sigDistOutset);
+//                                 float inset = 1.0 - smoothstep(uThreshold - afwidth, uThreshold + afwidth, sigDistInset);
+//                             #else
+//                                 float outset = clamp(sigDistOutset / fwidth(sigDistOutset) + 0.5, 0.0, 1.0);
+//                                 float inset = 1.0 - clamp(sigDistInset / fwidth(sigDistInset) + 0.5, 0.0, 1.0);
+//                             #endif
+                
+//                             // Border
+//                             float border = outset * inset;
+                
+//                             // Alpha Test
+//                             if (alpha < uAlphaTest) discard;
+                
+//                             // Output: Common
+//                             vec4 filledFragColor = vec4(uColor, uOpacity * alpha);
+                
+//                             // Output: Strokes
+//                             vec4 strokedFragColor = vec4(uStrokeColor, sOpacity * border);
+                
+//                             float lineProgress = 0.3;
+//                             float gr = texture2D(gradientMap, vUv).r;
+//                             // gradient
+//                             float grgr = fract(3.*gr + time/5.);
+//                             float start = smoothstep(0.,0.01,grgr);
+//                             float end = smoothstep(lineProgress,lineProgress -0.01,grgr);
+//                             float mask = start*end;
+//                             mask = max(0.2,mask);
+            
+//                             float fill = clamp(sigDist/fwidth(sigDist) + 0.5, 0.0, 1.0);
+            
+//                             float finalAlpha = border*mask + fill*circle;
+            
+//                             // gl_FragColor = filledFragColor;
+//                             gl_FragColor = vec4(uColor, finalAlpha);
+//                             // gl_FragColor = mix(filledFragColor, strokedFragColor, border);
+//                         }
+//                     `,
+//                 });
+            
+//                 this.material.uniforms.uMap.value = atlas;
+//                 this.material.uniforms.uColor.value = new THREE.Color(0xffffff);
+//                 this.material.uniforms.uStrokeColor.value = new THREE.Color(0xffffff);
+//                 this.material.uniforms.time.value = this.time;
+                
+            
+//                 const mesh = new THREE.Mesh(this.geometry, this.material)
+//                 mesh.scale.set(0.01, - 0.01, 0.01)
+//                 mesh.position.set(-0.01 * layout.width / 2, -0.01 * layout.height / 2, 0)
+//                 this.scene.add(mesh)
+
+//     }
+    
+//     mouseEvents(){
+//         window.addEventListener('mousemove',(event)=>{
+//           this.mouse = {
+//             x: event.clientX/window.innerWidth,
+//             y: event.clientY/window.innerHeight,
+//           }
+//         //   this.materialText.uniforms.uMouse.value = new THREE.Vector2(this.mouse.x,this.mouse.y)
+//           this.material.uniforms.uMouse.value = new THREE.Vector2(this.mouse.x,this.mouse.y)
+//         })
+//       }
+
+//       setupResize() {
+//         window.addEventListener("resize", this.resize.bind(this));
+//       }
+    
+//       resize() {
+//         this.width = this.container.offsetWidth;
+//         this.height = this.container.offsetHeight;
+//         this.renderer.setSize(this.width, this.height);
+//         this.camera.aspect = this.width / this.height;
+//         this.camera.updateProjectionMatrix();
+//       }
+    
+//       render() {
+//         if (!this.isPlaying) return;
+//         this.time += 0.05;
+//         // this.material.uniforms.time.value = this.time;
+//         if(this.material) {
+//           this.material.uniforms.time.value = this.time;
+//           console.log(this.material.uniforms);
+//         }
+//         requestAnimationFrame(this.render.bind(this));
+//         this.renderer.render(this.scene, this.camera);
+//       }
+
+
+// }
+
+// new Section({
+//     dom: document.getElementById("webgl")
+//   })
+  
+
+
 let mixer = null
 
 const sizes = {
@@ -24,12 +357,14 @@ const cursor = {
     y: 0
 }
 
+let time = 0
+
 window.addEventListener('mousemove', (event) => {
 
     cursor.x = event.clientX / sizes.width - 0.5
     cursor.y = event.clientY / sizes.height - 0.5
 
-    // console.log(cursor.x + " " + cursor.y)
+    console.log(cursor.x + " " + cursor.y)
 })
 
 Promise.all([
@@ -38,7 +373,7 @@ Promise.all([
     loadFontAtlas("../fonts/manifold/gradient-map.png")
 ]).then(([atlas, font, gradientTexture]) => {
     const geometry = new MSDFTextGeometry({
-        text: "DALAI",
+        text: "D",
         font: font.data,
         align: 'center'
     });
@@ -64,10 +399,11 @@ Promise.all([
             
             // Strokes
             ...uniforms.strokes,
-            time: { type: 'f', value: 0 },
+            time: { type: 'f', value: time },
             viewport: { type: 'v2', value: new THREE.Vector2(window.innerWidth,window.innerHeight) },
             uMouse: { type: 'v2', value: new THREE.Vector2(0,0) },
             gradientMap: { type: 't', value: gradientTexture},
+            sOpacity: { value: 0.5 }
         },
         vertexShader: `
             // Attribute
@@ -137,6 +473,7 @@ Promise.all([
     
             // Uniforms: Common
             uniform float uOpacity;
+            uniform float sOpacity;
             uniform float uThreshold;
             uniform float uAlphaTest;
             uniform vec3 uColor;
@@ -175,7 +512,8 @@ Promise.all([
             }
     
             void main() {
-
+                
+                float circle = createCircle();
 
                 // Common
                 // Texture sample
@@ -217,7 +555,7 @@ Promise.all([
                 vec4 filledFragColor = vec4(uColor, uOpacity * alpha);
     
                 // Output: Strokes
-                vec4 strokedFragColor = vec4(uStrokeColor, uOpacity * border);
+                vec4 strokedFragColor = vec4(uStrokeColor, sOpacity * border);
     
                 float lineProgress = 0.3;
                 float gr = texture2D(gradientMap, vUv).r;
@@ -230,18 +568,20 @@ Promise.all([
 
                 float fill = clamp(sigDist/fwidth(sigDist) + 0.5, 0.0, 1.0);
 
-                // float finalAlpha = border*mask + fill
+                float finalAlpha = border*mask + fill*circle;
 
                 // gl_FragColor = filledFragColor;
-                gl_FragColor = vec4(vec3(grgr), 1.);
+                gl_FragColor = vec4(uColor, finalAlpha);
                 // gl_FragColor = mix(filledFragColor, strokedFragColor, border);
             }
         `,
     });
 
     material.uniforms.uMap.value = atlas;
-    // material.uniforms.uColor.value = new Color('0xfffff');
-            // material.uniforms.uStrokeColor.value = new Color(config.settings.strokeColor);
+    material.uniforms.uColor.value = new THREE.Color(0xffffff);
+    material.uniforms.uStrokeColor.value = new THREE.Color(0xffffff);
+    material.uniforms.time.value = time;
+    
 
     const mesh = new THREE.Mesh(geometry, material)
     mesh.scale.set(0.01, - 0.01, 0.01)
@@ -442,11 +782,11 @@ const tick = () =>
     if(mixer !== null){
     mixer.update(deltaTime)
     }
-    
 
     // camera.position.x = cursor.x * 0.04
     // camera.position.y = cursor.y * 0.025
 
+    time += elapsedTime * 5
 
     // Update controls
     controls.update()
